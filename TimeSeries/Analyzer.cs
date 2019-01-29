@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
-using MathNet.Numerics.Statistics;
 
 namespace TimeSeries
 {
@@ -12,12 +11,10 @@ namespace TimeSeries
     {
         private readonly Vector<double>[] _train;
         private readonly Vector<double>[] _test;
-        private readonly int _paramsLength;
 
         public Analyzer(Vector<double>[] train, Vector<double>[] test)
         {
-            if(test.Length != 0) _paramsLength = test[0].Count;
-
+            if (train == null || test == null) throw new Exception("Null input data!");
             _train = train;
             _test = test;
         }
@@ -28,6 +25,8 @@ namespace TimeSeries
         /// <returns>result of analysis</returns>
         public Matrix<double> Analyze()
         {
+            if (_train.Length == 0 || _test.Length == 0) return Matrix.Build.DenseIdentity(0);
+
             Matrix<double> d = CalculateD();
             Matrix<double> invB = CalculateB(d).PseudoInverse();
             Matrix<double> c = CalculateC(d);
@@ -39,16 +38,20 @@ namespace TimeSeries
 
         private Matrix<double> CalculateD()
         {
-
-
-
-            int len = _train.Length;
-            if (len == 0) return null;
+            if (_train.Length == 0) return null;
 
             BitArray used = new BitArray(_train.Length, false);
+                     
+            IEnumerable<int> Selector(Vector<double> col)
+            {
+                var components = col.EnumerateIndexed().OrderBy(n => n.Item2).ToArray();
+                int len = components.Length;
+                return new[] {components[0].Item1, components[(len - 1) / 2].Item1, components[len - 1].Item1};
+            }
 
-            List<Vector<double>> dSeries = new List<Vector<double>>(_train.Length);
-            Matrix<double> matrix = Matrix<double>.Build.DenseOfRowVectors(_train);
+            int ResultSelector(Vector<double> col, int i) => i;
+          
+            bool Predicate(int t) => !used[t];
 
             Vector<double> ChoseRow(int i)
             {
@@ -56,51 +59,13 @@ namespace TimeSeries
                 return _train[i];
             }
 
-            bool Predicate(int t) => !used[t];
-
-            int MedianIndex(Vector<double> vector)
-            {
-                int lastMin = 0;
-                for (int i = 0; i < vector.Count / 2; i++)
-                {
-                    int min = 0;
-                    for (int j = 0; i < vector.Count; i++)
-                    {
-                        if (vector[i] < vector[min] && vector[i] > vector[lastMin])
-                            min = i;
-                    }
-
-                    min = from v in vector
-                          
-                    
-
-
-                    lastMin = min;
-                }
-
-                //from i in Enumerable.Range(0, vector.Count / 2)
-                //let min = 0
-                //select from j in Enumerable.Range(0, vector.Count)
-                //       let m = vector[i] < vector[min] && vector[i] > vector[lastMin] ? i : min
-                //       select min
-                
-    
-
-
-
-                return lastMin;
-            }
-
-            dSeries.Min();
-
-            dSeries.AddRange(matrix.EnumerateColumns()
-                .SelectMany(col => new[] {col.MinimumIndex(), MedianIndex(col), col.MaximumIndex()}, (col, i) => i)
+            var dVectors = Matrix<double>.Build.DenseOfRowVectors(_train)
+                .EnumerateColumns()
+                .SelectMany(Selector, ResultSelector)
                 .Where(Predicate)
-                .Select(ChoseRow));
+                .Select(ChoseRow);
 
-
-
-            return Matrix.Build.DenseOfColumnVectors(dSeries1.Distinct());
+            return Matrix.Build.DenseOfColumnVectors(dVectors);
         }
 
         private Matrix<double> CalculateB(Matrix<double> d)
