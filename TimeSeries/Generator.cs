@@ -1,4 +1,5 @@
-﻿using MathNet.Numerics.LinearAlgebra;
+﻿using System.Linq;
+using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
 
 namespace TimeSeries
@@ -15,15 +16,8 @@ namespace TimeSeries
         /// <param name="trainSize">the size of test set</param>     
         public static void Generate(out Vector<double>[] train, out Vector<double>[] test, int paramsLength = 3, int trainSize = 80, int testSize = 20)
         {
-            train = new Vector<double>[trainSize];
-            test = new Vector<double>[testSize];
-
-            for (int i = 0; i < trainSize; i++)
-                train[i] = Vector.Build.Random(paramsLength);
-
-            for (int i = 0; i < testSize; i++)
-                test[i] = Vector.Build.Random(paramsLength);
-
+            train = new Vector<double>[trainSize].Select(t1 => Vector.Build.Random(paramsLength)).ToArray();
+            test = new Vector<double>[testSize].Select(t1 => Vector.Build.Random(paramsLength)).ToArray();
         }
 
     }

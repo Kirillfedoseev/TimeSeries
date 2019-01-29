@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using MathNet.Numerics.LinearAlgebra;
@@ -10,12 +11,10 @@ namespace TimeSeries
     {
         private readonly Vector<double>[] _train;
         private readonly Vector<double>[] _test;
-        private readonly int _paramsLength;
 
         public Analyzer(Vector<double>[] train, Vector<double>[] test)
         {
-            if(test.Length != 0) _paramsLength = test[0].Count;
-
+            if (train == null || test == null) throw new Exception("Null input data!");
             _train = train;
             _test = test;
         }
@@ -26,6 +25,8 @@ namespace TimeSeries
         /// <returns>result of analysis</returns>
         public Matrix<double> Analyze()
         {
+            if (_train.Length == 0 || _test.Length == 0) return Matrix.Build.DenseIdentity(0);
+
             Matrix<double> d = CalculateD();
             Matrix<double> invB = CalculateB(d).PseudoInverse();
             Matrix<double> c = CalculateC(d);
@@ -37,55 +38,66 @@ namespace TimeSeries
 
         private Matrix<double> CalculateD()
         {
-            int len = _train.Length;
-            if (len == 0) return null;
+            if (_train.Length == 0) return null;
 
-            List<Vector<double>> dSeries = new List<Vector<double>>(3 * _paramsLength);
-
-            for (int i = 0; i < _paramsLength; i++)
+            //bit array for marking used columns
+            BitArray used = new BitArray(_train.Length, false);
+                     
+            //select indexes of min, mid, max rows in that column
+            IEnumerable<int> Selector(Vector<double> col)
             {
-                var res = _train.OrderBy(n => n[i]).ToList();
+                var components = col.EnumerateIndexed().OrderBy(n => n.Item2).ToArray();
+                int len = components.Length;
+                return new[] {components[0].Item1, components[(len - 1) / 2].Item1, components[len - 1].Item1};
+            }
 
-                dSeries.Add(res[0]); //min
-                dSeries.Add(res[(len - 1) / 2]); //mid
-                dSeries.Add(res[len - 1]); //max
-            }      
+            // Function on results of SelectMany operation (use for making 2d array of results to 1d array)
+            int ResultSelector(Vector<double> col, int i) => i;
+          
+            // predicate for not used rows
+            bool Predicate(int t) => !used[t];
 
-            return Matrix.Build.DenseOfColumnVectors(dSeries.Distinct());
+            // get row with marking as used
+            Vector<double> ChoseRow(int i)
+            {
+                used[i] = true;
+                return _train[i];
+            }
+
+            var dVectors = 
+                Matrix<double>.Build.DenseOfRowVectors(_train) //make array of vectors to matrix
+                .EnumerateColumns() //get columns array
+                .SelectMany(Selector, ResultSelector) //select indexes of rows, which contain min, mid, max in any column
+                .Where(Predicate) // check for row have been chosen or not
+                .Select(ChoseRow);  // final selection of rows and mark this row as used
+
+            return Matrix.Build.DenseOfColumnVectors(dVectors);
         }
 
         private Matrix<double> CalculateB(Matrix<double> d)
         {
-            Matrix<double> core  = Matrix<double>.Build.Dense(d.ColumnCount, d.ColumnCount);
-
-            for (int i = 0; i < d.ColumnCount; i++)
-            {
-                for (int j = 0; j < d.ColumnCount; j++)
-                    core[i, j] = GetSimilarity(d.Column(i), d.Column(j));
-            } 
-            
-            return core;
+            return Matrix<double>.Build.Dense(
+                d.ColumnCount, d.ColumnCount,
+                d.EnumerateColumns()
+                    .SelectMany(d1 => d.EnumerateColumns(), GetSimilarity) // GetSimilarity on CrossProduct of d and d
+                    .ToArray());
         }
 
         private Matrix<double> CalculateC(Matrix<double> d)
         {
-            Matrix<double> cMatrix = Matrix<double>.Build.Dense(d.ColumnCount, _test.Length);
+            return Matrix<double>.Build.Dense(
+                d.ColumnCount, _test.Length,
+                d.EnumerateColumns()
+                    .SelectMany(d1 => _test, GetSimilarity) // GetSimilarity on CrossProduct of d and _test
+                    .ToArray()
+                );
 
-            for (int i = 0; i < d.ColumnCount; i++)
-            {
-                for (int j = 0; j < _test.Length; j++)
-                    cMatrix[i, j] = GetSimilarity(d.Column(i), _test[j]);
-            }
-
-            return cMatrix;
         }
 
         private double GetSimilarity(Vector<double> a, Vector<double> b)
         {
             double dist = (a-b).PointwisePower(2).Sum(); //calculate distance between vectors
-
-            //sum >=0, due to squares
-            double res = Math.Pow(Math.E, -dist); // get coef of difference, exp needs for function domain (0,1]
+            double res = Math.Pow(Math.E, -dist); //sum >=0, due to squares; get coef of difference, exp needs for function domain (0,1]
             return res;
         }
     }
