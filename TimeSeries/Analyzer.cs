@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
+using MathNet.Numerics.Statistics;
 
 namespace TimeSeries
 {
@@ -37,55 +39,90 @@ namespace TimeSeries
 
         private Matrix<double> CalculateD()
         {
+
+
+
             int len = _train.Length;
             if (len == 0) return null;
 
-            List<Vector<double>> dSeries = new List<Vector<double>>(3 * _paramsLength);
+            BitArray used = new BitArray(_train.Length, false);
 
-            for (int i = 0; i < _paramsLength; i++)
+            List<Vector<double>> dSeries = new List<Vector<double>>(_train.Length);
+            Matrix<double> matrix = Matrix<double>.Build.DenseOfRowVectors(_train);
+
+            Vector<double> ChoseRow(int i)
             {
-                var res = _train.OrderBy(n => n[i]).ToList();
+                used[i] = true;
+                return _train[i];
+            }
 
-                dSeries.Add(res[0]); //min
-                dSeries.Add(res[(len - 1) / 2]); //mid
-                dSeries.Add(res[len - 1]); //max
-            }      
+            bool Predicate(int t) => !used[t];
 
-            return Matrix.Build.DenseOfColumnVectors(dSeries.Distinct());
+            int MedianIndex(Vector<double> vector)
+            {
+                int lastMin = 0;
+                for (int i = 0; i < vector.Count / 2; i++)
+                {
+                    int min = 0;
+                    for (int j = 0; i < vector.Count; i++)
+                    {
+                        if (vector[i] < vector[min] && vector[i] > vector[lastMin])
+                            min = i;
+                    }
+
+                    min = from v in vector
+                          
+                    
+
+
+                    lastMin = min;
+                }
+
+                //from i in Enumerable.Range(0, vector.Count / 2)
+                //let min = 0
+                //select from j in Enumerable.Range(0, vector.Count)
+                //       let m = vector[i] < vector[min] && vector[i] > vector[lastMin] ? i : min
+                //       select min
+                
+    
+
+
+
+                return lastMin;
+            }
+
+            dSeries.Min();
+
+            dSeries.AddRange(matrix.EnumerateColumns()
+                .SelectMany(col => new[] {col.MinimumIndex(), MedianIndex(col), col.MaximumIndex()}, (col, i) => i)
+                .Where(Predicate)
+                .Select(ChoseRow));
+
+
+
+            return Matrix.Build.DenseOfColumnVectors(dSeries1.Distinct());
         }
 
         private Matrix<double> CalculateB(Matrix<double> d)
         {
-            Matrix<double> core  = Matrix<double>.Build.Dense(d.ColumnCount, d.ColumnCount);
-
-            for (int i = 0; i < d.ColumnCount; i++)
-            {
-                for (int j = 0; j < d.ColumnCount; j++)
-                    core[i, j] = GetSimilarity(d.Column(i), d.Column(j));
-            } 
-            
-            return core;
+            return Matrix<double>.Build.Dense(
+                d.ColumnCount, d.ColumnCount,
+                d.EnumerateColumns().SelectMany(d1 => d.EnumerateColumns(), GetSimilarity).ToArray());
         }
 
         private Matrix<double> CalculateC(Matrix<double> d)
         {
-            Matrix<double> cMatrix = Matrix<double>.Build.Dense(d.ColumnCount, _test.Length);
+            return Matrix<double>.Build.Dense(
+                d.ColumnCount, _test.Length,
+                d.EnumerateColumns().SelectMany(d1 => _test, GetSimilarity).ToArray()
+                );
 
-            for (int i = 0; i < d.ColumnCount; i++)
-            {
-                for (int j = 0; j < _test.Length; j++)
-                    cMatrix[i, j] = GetSimilarity(d.Column(i), _test[j]);
-            }
-
-            return cMatrix;
         }
 
         private double GetSimilarity(Vector<double> a, Vector<double> b)
         {
             double dist = (a-b).PointwisePower(2).Sum(); //calculate distance between vectors
-
-            //sum >=0, due to squares
-            double res = Math.Pow(Math.E, -dist); // get coef of difference, exp needs for function domain (0,1]
+            double res = Math.Pow(Math.E, -dist); //sum >=0, due to squares; get coef of difference, exp needs for function domain (0,1]
             return res;
         }
     }
