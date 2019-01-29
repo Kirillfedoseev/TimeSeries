@@ -40,8 +40,10 @@ namespace TimeSeries
         {
             if (_train.Length == 0) return null;
 
+            //bit array for marking used columns
             BitArray used = new BitArray(_train.Length, false);
                      
+            //select indexes of min, mid, max rows in that column
             IEnumerable<int> Selector(Vector<double> col)
             {
                 var components = col.EnumerateIndexed().OrderBy(n => n.Item2).ToArray();
@@ -49,21 +51,25 @@ namespace TimeSeries
                 return new[] {components[0].Item1, components[(len - 1) / 2].Item1, components[len - 1].Item1};
             }
 
+            // Function on results of SelectMany operation (use for making 2d array of results to 1d array)
             int ResultSelector(Vector<double> col, int i) => i;
           
+            // predicate for not used rows
             bool Predicate(int t) => !used[t];
 
+            // get row with marking as used
             Vector<double> ChoseRow(int i)
             {
                 used[i] = true;
                 return _train[i];
             }
 
-            var dVectors = Matrix<double>.Build.DenseOfRowVectors(_train)
-                .EnumerateColumns()
-                .SelectMany(Selector, ResultSelector)
-                .Where(Predicate)
-                .Select(ChoseRow);
+            var dVectors = 
+                Matrix<double>.Build.DenseOfRowVectors(_train) //make array of vectors to matrix
+                .EnumerateColumns() //get columns array
+                .SelectMany(Selector, ResultSelector) //select indexes of rows, which contain min, mid, max in any column
+                .Where(Predicate) // check for row have been chosen or not
+                .Select(ChoseRow);  // final selection of rows and mark this row as used
 
             return Matrix.Build.DenseOfColumnVectors(dVectors);
         }
@@ -72,14 +78,18 @@ namespace TimeSeries
         {
             return Matrix<double>.Build.Dense(
                 d.ColumnCount, d.ColumnCount,
-                d.EnumerateColumns().SelectMany(d1 => d.EnumerateColumns(), GetSimilarity).ToArray());
+                d.EnumerateColumns()
+                    .SelectMany(d1 => d.EnumerateColumns(), GetSimilarity) // GetSimilarity on CrossProduct of d and d
+                    .ToArray());
         }
 
         private Matrix<double> CalculateC(Matrix<double> d)
         {
             return Matrix<double>.Build.Dense(
                 d.ColumnCount, _test.Length,
-                d.EnumerateColumns().SelectMany(d1 => _test, GetSimilarity).ToArray()
+                d.EnumerateColumns()
+                    .SelectMany(d1 => _test, GetSimilarity) // GetSimilarity on CrossProduct of d and _test
+                    .ToArray()
                 );
 
         }
