@@ -38,14 +38,30 @@ namespace TimeSeries
         private Matrix<double> CalculateD()
         {
             if (_train.Length == 0) return null;
-
+            var trainMatrix = Matrix<double>.Build
+                                            .DenseOfRowVectors(_train);
             // get matrix with 5-"good" matrix for each dimensional of vector
-            var dArrays =
-                Matrix<double>.Build.DenseOfRowVectors(_train)
+            var statSelection = trainMatrix
                     .EnumerateColumns()
                     .Select(col => col.FiveNumberSummary());
 
-            return Matrix.Build.DenseOfRowArrays(dArrays);
+            var statisticsForEachParameter =
+                Matrix<double>.Build.DenseOfColumns(statSelection)
+                              .EnumerateRows().ToArray();//векторы статистики по каждому параметру (каждый вектор - некоторая статистика по каждому параметру).
+            var (mins,meds,maxs) = (statisticsForEachParameter[0],statisticsForEachParameter[2],statisticsForEachParameter[4]);
+
+            //из каждого вектора наблюдений вычитаем вектор каждой статистики.
+            //Если какая-то (хотя бы одна, для любой стастики) компонента разности равна 0 - 
+            //то, значит, значение соответствующего параметра в этом наблюдении 
+            //равно его статистике). И он нас интересует.
+            var criticalObservations = 
+                    trainMatrix.EnumerateRows()
+                               .Where(obs => (obs - mins).Any(k => k == 0.0)
+                                          || (obs - meds).Any(k => k == 0.0)
+                                          || (obs - maxs).Any(k => k == 0.0))
+                                .ToArray();    
+          
+            return Matrix.Build.DenseOfRows(criticalObservations);
         }
 
         private Matrix<double> CalculateB(Matrix<double> d)
