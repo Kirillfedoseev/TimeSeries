@@ -7,7 +7,7 @@ namespace TimeSeries
     {
         static void Main(string[] args)
         {
-            Generator.Generate(out var train, out var test, trainSize:8, testSize:2);
+            Generator.Generate(out var train, out var test, paramsLength: 10, trainSize:8, testSize:2);
 
             Analyzer analyzer = new Analyzer(train, test);
 

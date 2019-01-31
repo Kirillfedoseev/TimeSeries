@@ -1,9 +1,8 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
+using MathNet.Numerics.Statistics;
 
 namespace TimeSeries
 {
@@ -40,38 +39,13 @@ namespace TimeSeries
         {
             if (_train.Length == 0) return null;
 
-            //bit array for marking used columns
-            BitArray used = new BitArray(_train.Length, false);
-                     
-            //select indexes of min, mid, max rows in that column
-            IEnumerable<int> Selector(Vector<double> col)
-            {
-                var components = col.EnumerateIndexed().OrderBy(n => n.Item2).ToArray();
-                int len = components.Length;
-                return new[] {components[0].Item1, components[(len - 1) / 2].Item1, components[len - 1].Item1};
-            }
+            // get matrix with 5-"good" matrix for each dimensional of vector
+            var dArrays =
+                Matrix<double>.Build.DenseOfRowVectors(_train)
+                    .EnumerateColumns()
+                    .Select(col => col.FiveNumberSummary());
 
-            // Function on results of SelectMany operation (use for making 2d array of results to 1d array)
-            int ResultSelector(Vector<double> col, int i) => i;
-          
-            // predicate for not used rows
-            bool Predicate(int t) => !used[t];
-
-            // get row with marking as used
-            Vector<double> ChoseRow(int i)
-            {
-                used[i] = true;
-                return _train[i];
-            }
-
-            var dVectors = 
-                Matrix<double>.Build.DenseOfRowVectors(_train) //make array of vectors to matrix
-                .EnumerateColumns() //get columns array
-                .SelectMany(Selector, ResultSelector) //select indexes of rows, which contain min, mid, max in any column
-                .Where(Predicate) // check for row have been chosen or not
-                .Select(ChoseRow);  // final selection of rows and mark this row as used
-
-            return Matrix.Build.DenseOfColumnVectors(dVectors);
+            return Matrix.Build.DenseOfRowArrays(dArrays);
         }
 
         private Matrix<double> CalculateB(Matrix<double> d)
